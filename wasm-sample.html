@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prime Number Calculator - Benchmark</title>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.22.1/full/pyodide.js"></script>
+</head>
+
+<body>
+    <h1>Prime Number Calculator - Benchmark</h1>
+    <input type="number" id="limit" placeholder="Enter upper limit">
+    <button onclick="runBenchmark()">Run Benchmark</button>
+    <div id="result"></div>
+
+    <script>
+        let pyodide;
+
+        async function initPyodide() {
+            pyodide = await loadPyodide();
+            await pyodide.loadPackage("numpy");
+        }
+
+        function sieveOfEratosthenesJS(limit) {
+            const sieve = new Array(limit + 1).fill(true);
+            sieve[0] = sieve[1] = false;
+            for (let i = 2; i <= Math.sqrt(limit); i++) {
+                if (sieve[i]) {
+                    for (let j = i * i; j <= limit; j += i) {
+                        sieve[j] = false;
+                    }
+                }
+            }
+            return sieve.reduce((primes, isPrime, num) => {
+                if (isPrime) primes.push(num);
+                return primes;
+            }, []);
+        }
+
+        async function runBenchmark() {
+            const result = document.getElementById("result");
+            result.innerHTML = "Initializing...";
+
+            if (!pyodide) {
+                try {
+                    await initPyodide();
+                } catch (error) {
+                    result.innerHTML = `Error initializing Pyodide: ${error.message}`;
+                    return;
+                }
+            }
+
+            const limit = parseInt(document.getElementById("limit").value);
+            if (isNaN(limit) || limit <= 0) {
+                result.innerHTML = "Please enter a valid positive number.";
+                return;
+            }
+
+            try {
+                // Benchmark JavaScript
+                const jsStart = performance.now();
+                const jsPrimes = sieveOfEratosthenesJS(limit);
+                const jsEnd = performance.now();
+                const jsTime = jsEnd - jsStart;
+
+                // Benchmark Python
+                const pythonCode = `
+import numpy as np
+
+def sieve_of_eratosthenes(limit):
+    sieve = np.ones(limit + 1, dtype=bool)
+    sieve[0:2] = False
+    for i in range(2, int(np.sqrt(limit)) + 1):
+        if sieve[i]:
+            sieve[i*i::i] = False
+    return np.where(sieve)[0].tolist()
+
+primes = sieve_of_eratosthenes(${limit})
+len(primes)  # Return the length of primes
+                `;
+
+                const pyStart = performance.now();
+                const pyResult = await pyodide.runPythonAsync(pythonCode);
+                const pyEnd = performance.now();
+                const pyTime = pyEnd - pyStart;
+
+                // Display results
+                result.innerHTML = `
+                    <h3>Results for limit: ${limit}</h3>
+                    <p>JavaScript Time: ${jsTime.toFixed(2)} ms</p>
+                    <p>Python (WebAssembly) Time: ${pyTime.toFixed(2)} ms</p>
+                    <p>JavaScript found ${jsPrimes.length} primes</p>
+                    <p>Python found ${pyResult} primes</p>
+                `;
+            } catch (error) {
+                result.innerHTML = `Error during benchmark: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+
+</html>
